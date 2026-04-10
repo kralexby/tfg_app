@@ -9,23 +9,12 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // --- ESTADO ---
+  // --- ESTADO DINÁMICO ---
   bool _isEditingProfile = false;
-  String _userName = 'Alex';
+  String _userName = 'Usuario';
+  Color _accentColor = const Color(0xFF00FF66);
 
-  // El color elegido aquí cambiará automáticamente la racha y detalles de la web
-  Color _avatarColor = const Color(0xFF00FF66);
-
-  // --- CONFIGURACIÓN DE ACTIVIDAD (IA) ---
-  final int _objetivoSemanal = 3;
-  final List<int> _diasAsistidos = [
-    10,
-    11,
-    12,
-  ]; // Días que el usuario fue al gym
-  final int _diaHoy = 15;
-
-  // --- COLORES FIJOS ---
+  // --- COLORES Y ESTILOS FIJOS ---
   static const Color backgroundColor = Color(0xFF1E1E1E);
   static const Color cardColor = Color(0xFF2C2C2E);
   static const Color inactiveDayColor = Color(0xFF4A4A4C);
@@ -38,17 +27,17 @@ class _HomeScreenState extends State<HomeScreen> {
     bottomLeft: Radius.circular(4.0),
   );
 
-  // --- LÓGICA DE FECHA Y MENSAJES ---
-  String _getCurrentDate() {
+  // --- LÓGICA DE FECHA ---
+  String _getFormattedDate() {
     final now = DateTime.now();
     final days = [
+      'Domingo',
       'Lunes',
       'Martes',
       'Miércoles',
       'Jueves',
       'Viernes',
       'Sábado',
-      'Domingo',
     ];
     final months = [
       'Enero',
@@ -64,23 +53,13 @@ class _HomeScreenState extends State<HomeScreen> {
       'Noviembre',
       'Diciembre',
     ];
-    return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]}';
+    return '${days[now.weekday % 7]}, ${now.day} ${months[now.month - 1]}';
   }
 
-  void _showSoonMessage(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('La función de $feature estará disponible próximamente'),
-        backgroundColor: Colors.black87,
-      ),
-    );
-  }
+  // --- FUNCIONES DE EDICIÓN ---
 
-  // --- DIÁLOGOS DE EDICIÓN ---
   void _changeName() {
-    final TextEditingController nameController = TextEditingController(
-      text: _userName,
-    );
+    TextEditingController controller = TextEditingController(text: _userName);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -90,11 +69,15 @@ class _HomeScreenState extends State<HomeScreen> {
           style: TextStyle(color: Colors.white),
         ),
         content: TextField(
-          controller: nameController,
+          controller: controller,
+          autofocus: true,
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: _avatarColor),
+              borderSide: BorderSide(color: _accentColor),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: _accentColor, width: 2),
             ),
           ),
         ),
@@ -108,17 +91,24 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           TextButton(
             onPressed: () {
-              setState(() => _userName = nameController.text);
+              if (controller.text.isNotEmpty)
+                setState(() => _userName = controller.text);
               Navigator.pop(context);
             },
-            child: Text('GUARDAR', style: TextStyle(color: _avatarColor)),
+            child: Text(
+              'GUARDAR',
+              style: TextStyle(
+                color: _accentColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _changeAvatarColor() {
+  void _changeColor() {
     final colors = [
       const Color(0xFF00FF66),
       Colors.blue,
@@ -127,29 +117,48 @@ class _HomeScreenState extends State<HomeScreen> {
       Colors.pink,
       Colors.red,
       Colors.cyan,
+      Colors.white,
+      Colors.yellow,
     ];
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: cardColor,
         title: const Text(
-          'Color del Perfil y Racha',
+          'Color de Perfil y Racha',
           style: TextStyle(color: Colors.white),
         ),
         content: Wrap(
-          spacing: 10,
+          spacing: 12,
+          runSpacing: 12,
+          alignment: WrapAlignment.center,
           children: colors
               .map(
-                (color) => GestureDetector(
+                (c) => GestureDetector(
                   onTap: () {
-                    setState(() => _avatarColor = color);
+                    setState(() => _accentColor = c);
                     Navigator.pop(context);
                   },
-                  child: CircleAvatar(backgroundColor: color, radius: 20),
+                  child: CircleAvatar(
+                    backgroundColor: c,
+                    radius: 22,
+                    child: _accentColor == c
+                        ? const Icon(Icons.check, color: Colors.black)
+                        : null,
+                  ),
                 ),
               )
               .toList(),
         ),
+      ),
+    );
+  }
+
+  void _showSoon(String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Función de $feature próximamente'),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -163,8 +172,15 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             _buildHeader(),
             Expanded(
-              child: Stack(
-                children: [_buildHomeContent(), _buildProfileDrawer()],
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Stack(
+                    children: [
+                      _buildHomeContent(),
+                      _buildProfileShutter(constraints.maxHeight),
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -174,7 +190,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- HEADER ---
+  // --- WIDGETS DE LA UI ---
+
   Widget _buildHeader() {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 350),
@@ -193,7 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           CircleAvatar(
             radius: 24,
-            backgroundColor: _avatarColor,
+            backgroundColor: _accentColor,
             child: const Icon(Icons.person, color: Colors.white),
           ),
           const SizedBox(width: 15),
@@ -210,7 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 Text(
-                  _getCurrentDate(),
+                  _getFormattedDate(),
                   style: const TextStyle(color: Colors.white70, fontSize: 13),
                 ),
               ],
@@ -229,13 +246,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- PERSIANA DE PERFIL ---
-  Widget _buildProfileDrawer() {
+  Widget _buildProfileShutter(double maxHeight) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 350),
       curve: Curves.easeInOut,
       margin: const EdgeInsets.only(right: 20),
-      height: _isEditingProfile ? 320 : 0,
+      height: _isEditingProfile ? 320 : 0.0,
       width: double.infinity,
       decoration: const BoxDecoration(
         color: cardColor,
@@ -249,21 +265,17 @@ class _HomeScreenState extends State<HomeScreen> {
         physics: const NeverScrollableScrollPhysics(),
         child: Column(
           children: [
-            _buildProfileMenuItem(
-              'Cambiar color Perfil/Racha',
-              true,
-              _changeAvatarColor,
-            ),
+            _buildProfileMenuItem('Cambiar color Avatar', true, _changeColor),
             _buildProfileMenuItem('Cambiar Nombre', true, _changeName),
             _buildProfileMenuItem(
               'Cambiar correo',
               true,
-              () => _showSoonMessage('correo'),
+              () => _showSoon('correo'),
             ),
             _buildProfileMenuItem(
               'Cambiar contraseña',
               false,
-              () => _showSoonMessage('contraseña'),
+              () => _showSoon('contraseña'),
             ),
           ],
         ),
@@ -276,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Colors.black,
           border: divider
@@ -285,62 +297,105 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: Text(
           title,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ),
     );
   }
 
-  // --- CONTENIDO PRINCIPAL ---
   Widget _buildHomeContent() {
-    bool necesitaAviso =
-        _diaHoy >= 15 && _diasAsistidos.length < _objetivoSemanal;
-
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 30),
-          if (necesitaAviso) _buildReminderCard(),
-          _buildSectionTitle('¡Empieza tu rutina!'),
-          _buildRoutineCard(),
+          _buildSectionTitle('¡Empieza tu rutina de hoy!'),
+          _buildRoutineCard(
+            'Entrenamiento de pecho',
+            'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1470&auto=format&fit=crop',
+          ),
           const SizedBox(height: 30),
-          _buildSectionTitle('Actividad Semanal'),
+          _buildSectionTitle('Racha actual'),
           _buildStreakCalendar(),
           const SizedBox(height: 30),
-          _buildSectionTitle('Recomendaciones IA'),
-          _buildAICard(),
+          _buildSectionTitle('Recomendaciones de IA'),
+          _buildRoutineCard(
+            'Ver análisis de IA',
+            'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?q=80&w=1470&auto=format&fit=crop',
+            isAI: true,
+          ),
+          const SizedBox(height: 25),
         ],
       ),
     );
   }
 
-  Widget _buildReminderCard() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.redAccent.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
-      ),
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         children: [
-          const Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              '¡Atención! Aún no has cumplido tu objetivo semanal. ¡Tú puedes!',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
             ),
+          ),
+          const SizedBox(width: 8),
+          Icon(Icons.chevron_right, color: _accentColor),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoutineCard(String title, String url, {bool isAI = false}) {
+    return Container(
+      width: double.infinity,
+      height: 160,
+      decoration: BoxDecoration(
+        borderRadius: appCardRadius,
+        image: DecorationImage(
+          image: NetworkImage(url),
+          fit: BoxFit.cover,
+          colorFilter: ColorFilter.mode(
+            Colors.black.withOpacity(0.4),
+            BlendMode.darken,
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {},
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+            ),
+            child: Text(isAI ? 'Ver análisis' : 'Empezar'),
           ),
         ],
       ),
     );
   }
 
-  // --- CALENDARIO SINCRONIZADO ---
   Widget _buildStreakCalendar() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -350,93 +405,73 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Column(
         children: [
-          Row(
+          const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
-              _CalLabel('Su'),
-              _CalLabel('Mo'),
-              _CalLabel('Tu'),
-              _CalLabel('We'),
-              _CalLabel('Th'),
-              _CalLabel('Fr'),
-              _CalLabel('Sa'),
+            children: [
+              _DayHeader('Su'),
+              _DayHeader('Mo'),
+              _DayHeader('Tu'),
+              _DayHeader('We'),
+              _DayHeader('Th'),
+              _DayHeader('Fr'),
+              _DayHeader('Sa'),
             ],
           ),
           const SizedBox(height: 16),
-          // Semana fallida (en rojo tenue)
-          _buildCalendarWeek([
-            '1',
-            '2',
-            '3',
-            '4',
-            '5',
-            '6',
-            '7',
-          ], esSemanaFallida: true),
+          _buildCalendarWeek(['', '1', '2', '3', '4', '5', '6']),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              _buildDay('7'),
               _buildDay('8'),
-              _buildDay('9'),
-              _buildDay('10', asistio: true),
-              _buildDay('11', asistio: true),
-              _buildDay('12', asistio: true),
-              _buildDay('13', border: true),
-              _buildDay('14'),
+              _buildDay('9', bg: inactiveDayColor, txt: _accentColor),
+              _buildDay('10', bg: _accentColor, txt: Colors.black),
+              _buildDay('11', bg: _accentColor, txt: Colors.black),
+              _buildDay('12', bg: _accentColor, txt: Colors.black),
+              _buildDay(
+                '13',
+                bg: inactiveDayColor,
+                txt: _accentColor,
+                border: true,
+              ),
             ],
           ),
           const SizedBox(height: 12),
-          _buildCalendarWeek(['15', '16', '17', '18', '19', '20', '21']),
+          _buildCalendarWeek(['14', '15', '16', '17', '18', '19', '20']),
         ],
       ),
     );
   }
 
-  Widget _buildCalendarWeek(List<String> days, {bool esSemanaFallida = false}) {
+  Widget _buildCalendarWeek(List<String> days) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: days
-          .map((d) => _buildDay(d, esSemanaFallida: esSemanaFallida))
-          .toList(),
+      children: days.map((d) => _buildDay(d)).toList(),
     );
   }
 
-  Widget _buildDay(
-    String d, {
-    bool asistio = false,
-    bool esSemanaFallida = false,
-    bool border = false,
-  }) {
+  Widget _buildDay(String d, {Color? bg, Color? txt, bool border = false}) {
     if (d.isEmpty) return const SizedBox(width: 36);
-    Color textColor = Colors.white;
-    Color? bgColor;
-    if (asistio) {
-      bgColor = _avatarColor;
-      textColor = Colors.black;
-    } else if (esSemanaFallida) {
-      textColor = Colors.redAccent.withOpacity(0.5);
-    }
     return Container(
       width: 36,
       height: 36,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: bgColor ?? Colors.transparent,
+        color: bg ?? Colors.transparent,
         borderRadius: BorderRadius.circular(8),
-        border: border ? Border.all(color: _avatarColor, width: 1.5) : null,
+        border: border ? Border.all(color: _accentColor, width: 1.5) : null,
       ),
       child: Text(
         d,
         style: TextStyle(
-          color: textColor,
-          fontWeight: (asistio || border) ? FontWeight.bold : FontWeight.normal,
+          color: txt ?? Colors.white,
+          fontWeight: bg != null ? FontWeight.bold : FontWeight.normal,
         ),
       ),
     );
   }
 
-  // --- BARRA INFERIOR ---
   Widget _buildCustomBottomNav() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
@@ -446,19 +481,18 @@ class _HomeScreenState extends State<HomeScreen> {
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
         ),
-        border: Border(top: BorderSide(color: Colors.white12, width: 1)),
       ),
       child: SafeArea(
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            const Icon(Icons.home_outlined, color: Colors.white, size: 32),
-            const Icon(Icons.person_outline, color: Colors.white, size: 32),
+            const Icon(Icons.home_outlined, color: Colors.white, size: 30),
+            const Icon(Icons.person_outline, color: Colors.white, size: 30),
             Image.asset('assets/images/logo_kilo.png', height: 35),
-            const Icon(Icons.bar_chart, color: Colors.white, size: 32),
-            GestureDetector(
-              onTap: () => _showSettingsMenu(),
-              child: const Icon(Icons.menu, color: Colors.white, size: 32),
+            const Icon(Icons.bar_chart, color: Colors.white, size: 30),
+            IconButton(
+              icon: const Icon(Icons.menu, color: Colors.white, size: 30),
+              onPressed: () => _showSettingsMenu(),
             ),
           ],
         ),
@@ -466,7 +500,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- MENÚ DE AJUSTES RESTAURADO ---
   void _showSettingsMenu() {
     showModalBottomSheet(
       context: context,
@@ -487,41 +520,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () => Navigator.pop(context),
               ),
             ),
-            _buildOldMenuBtn(
-              'Cambiar icono de la App',
-              Colors.white,
-              () => _showSoonMessage('iconos'),
-            ),
-            _buildOldMenuBtn(
-              'Conócenos',
-              Colors.white,
-              () => _showSoonMessage('nosotros'),
-            ),
-            _buildOldMenuBtn(
-              'Legal',
-              Colors.white,
-              () => _showSoonMessage('legal'),
-            ),
-            _buildOldMenuBtn(
-              'Términos y Privacidad',
-              Colors.white,
-              () => _showSoonMessage('privacidad'),
-            ),
-            _buildOldMenuBtn('Cerrar sesión', Colors.red, () {
+            _buildSettingsItem('Conócenos', () {}),
+            _buildSettingsItem('Legal y Privacidad', () {}),
+            _buildSettingsItem('Cerrar sesión', () {
               Navigator.pop(context);
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (c) => const WelcomeScreen()),
                 (r) => false,
               );
-            }),
+            }, isDestructive: true),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildOldMenuBtn(String t, Color c, VoidCallback o) {
+  Widget _buildSettingsItem(
+    String t,
+    VoidCallback o, {
+    bool isDestructive = false,
+  }) {
     return InkWell(
       onTap: o,
       child: Container(
@@ -534,80 +553,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: Text(
           t,
-          style: TextStyle(color: c, fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String t) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
-      child: Row(
-        children: [
-          Text(
-            t,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Icon(Icons.chevron_right, color: _avatarColor),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRoutineCard() {
-    return Container(
-      width: double.infinity,
-      height: 160,
-      decoration: BoxDecoration(
-        borderRadius: appCardRadius,
-        image: const DecorationImage(
-          image: NetworkImage(
-            'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1470&auto=format&fit=crop',
-          ),
-          fit: BoxFit.cover,
-        ),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: const Align(
-        alignment: Alignment.bottomLeft,
-        child: Text(
-          'Pecho & Tríceps',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAICard() {
-    return Container(
-      width: double.infinity,
-      height: 160,
-      decoration: BoxDecoration(
-        borderRadius: appCardRadius,
-        image: const DecorationImage(
-          image: NetworkImage(
-            'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?q=80&w=1470&auto=format&fit=crop',
-          ),
-          fit: BoxFit.cover,
-        ),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: const Align(
-        alignment: Alignment.bottomLeft,
-        child: Text(
-          'Análisis IA',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
+            color: isDestructive ? Colors.red : Colors.white,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -616,17 +564,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _CalLabel extends StatelessWidget {
-  final String l;
-  const _CalLabel(this.l);
+class _DayHeader extends StatelessWidget {
+  final String day;
+  const _DayHeader(this.day);
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: 36,
       child: Text(
-        l,
+        day,
         textAlign: TextAlign.center,
-        style: const TextStyle(color: Colors.white54, fontSize: 12),
+        style: const TextStyle(color: Colors.white70, fontSize: 12),
       ),
     );
   }

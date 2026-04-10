@@ -9,7 +9,7 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  // 1. CREAMOS EL CONTROLADOR (El "cerebro" que lee el texto)
+  // 1. CREAMOS EL CONTROLADOR
   final TextEditingController _emailController = TextEditingController();
 
   // Es buena práctica limpiar los controladores al cerrar la pantalla
@@ -156,7 +156,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // Ahora recibe el controller como parámetro
   Widget _buildTextField(String hint, TextEditingController controller) {
     return TextField(
-      controller: controller, // <--- IMPORTANTE: Conectar el controlador
+      controller: controller,
       keyboardType:
           TextInputType.emailAddress, // Mejoramos la experiencia del teclado
       style: const TextStyle(color: Colors.black),

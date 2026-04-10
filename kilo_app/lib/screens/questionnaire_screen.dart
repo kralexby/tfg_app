@@ -18,7 +18,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // 1. FONDO (Usa la imagen que exportaste para esta pantalla)
+          // 1. FONDO
           Container(
             decoration: const BoxDecoration(
               image: DecorationImage(
@@ -47,7 +47,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
               child: Column(
                 children: [
                   const SizedBox(height: 20),
-                  // LOGO Y NOMBRE (Con Ubuntu por el tema global)
+                  // LOGO Y NOMBRE
                   Image.asset('assets/images/logo_kilo.png', height: 80),
                   const Text(
                     'KI-LO',

@@ -39,7 +39,7 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
     }
   }
 
-  // Función para retroceder (La flecha nueva)
+  // Función para retroceder
   void _previousStep() {
     if (_currentStep > 0) {
       _pageController.previousPage(
@@ -80,10 +80,10 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
           // Capa oscura para resaltar el texto
           Container(color: Colors.black.withOpacity(0.8)),
 
-          // 2. FLECHA PARA VOLVER ATRÁS (Arriba a la derecha)
+          // 2. FLECHA PARA VOLVER ATRÁS
           Positioned(
             top: 50,
-            right: 20,
+            left: 20,
             child: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
               onPressed: _previousStep,
@@ -209,7 +209,7 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
           ),
           const SizedBox(height: 10),
           _buildSelectionCard(
-            'Generar fuerza',
+            'Ganar fuerza',
             _goal == 'Ganar fuerza',
             () => setState(() => _goal = 'Ganar fuerza'),
           ),
@@ -236,13 +236,13 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
           ),
           const SizedBox(height: 15),
           _buildInputField(
-            'Introduce tu peso',
+            'Introduce tu peso en kg',
             _weightController,
             TextInputType.number,
           ),
           const SizedBox(height: 15),
           _buildInputField(
-            'Introduce tu altura',
+            'Introduce tu altura en cm',
             _heightController,
             TextInputType.number,
           ),
@@ -284,7 +284,7 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
       content: Column(
         children: [
           _buildInputField(
-            'Escríbele',
+            'Escríbelo aquí (ej: dolor de rodilla, lesión de hombro, etc.)',
             _injuryDetailController,
             TextInputType.text,
           ),

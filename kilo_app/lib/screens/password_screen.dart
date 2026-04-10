@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'questionnaire_screen.dart';
 
 class PasswordScreen extends StatefulWidget {
-  final String email; // Recibimos el email de la pantalla anterior
+  final String email;
   const PasswordScreen({super.key, required this.email});
 
   @override
@@ -19,7 +19,7 @@ class _PasswordScreenState extends State<PasswordScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // FONDO (El mismo del gimnasio oscuro)
+          // FONDO
           Container(
             decoration: const BoxDecoration(
               image: DecorationImage(
@@ -92,7 +92,7 @@ class _PasswordScreenState extends State<PasswordScreen> {
                       onPressed: () {
                         if (_passController.text ==
                                 _confirmPassController.text &&
-                            _passController.text.length >= 6) {
+                            _passController.text.length >= 8) {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -103,7 +103,7 @@ class _PasswordScreenState extends State<PasswordScreen> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text(
-                                'Las contraseñas deben coincidir y tener al menos 6 caracteres',
+                                'Las contraseñas deben coincidir y tener al menos 8 caracteres',
                               ),
                             ),
                           );

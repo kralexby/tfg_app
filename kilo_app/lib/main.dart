@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart'; // Importa el motor de Firebase
+import 'firebase_options.dart'; // Importa el archivo que generamos antes
 import 'screens/welcome_screen.dart';
 
-void main() {
+void main() async {
+  // 1. Aseguramos que Flutter esté listo para ejecutar código nativo
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 2. Arrancamos Firebase con la configuración específica de tu proyecto
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
   runApp(const MyApp());
 }
 
@@ -14,13 +22,12 @@ class MyApp extends StatelessWidget {
       title: 'KI-LO App',
       debugShowCheckedModeBanner: false,
 
-      // El tema global
+      // El tema global que ya tenías configurado
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
         fontFamily: 'Ubuntu',
 
-        // Esto ayuda a que los textos se vean bien en fondo oscuro
         textTheme: const TextTheme(
           bodyLarge: TextStyle(color: Colors.white),
           bodyMedium: TextStyle(color: Colors.white70),

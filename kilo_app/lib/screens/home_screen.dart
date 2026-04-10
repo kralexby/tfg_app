@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // IMPORTANTE
+import 'package:cloud_firestore/cloud_firestore.dart'; // IMPORTANTE
 import 'welcome_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -11,7 +13,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   // --- ESTADO DINÁMICO ---
   bool _isEditingProfile = false;
-  String _userName = 'Usuario';
+  String _userName = 'Cargando...'; // Por defecto mientras lee de internet
+  int _racha = 0; // Nueva variable para la racha real
   Color _accentColor = const Color(0xFF00FF66);
 
   // --- COLORES Y ESTILOS FIJOS ---
@@ -26,6 +29,42 @@ class _HomeScreenState extends State<HomeScreen> {
     bottomRight: Radius.circular(20.0),
     bottomLeft: Radius.circular(4.0),
   );
+
+  // --- 1. LÓGICA DE BACKEND: LEER DATOS AL INICIAR (READ) ---
+  @override
+  void initState() {
+    super.initState();
+    _cargarDatosUsuario();
+  }
+
+  Future<void> _cargarDatosUsuario() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        DocumentSnapshot doc = await FirebaseFirestore.instance
+            .collection('usuarios')
+            .doc(user.uid)
+            .get();
+
+        if (doc.exists && mounted) {
+          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+          setState(() {
+            // Si tiene un nombre guardado, lo usa. Si no, usa el inicio de su email.
+            if (data.containsKey('nombre') && data['nombre'] != null) {
+              _userName = data['nombre'];
+            } else {
+              String email = data['email'] ?? 'Atleta';
+              _userName = email.split('@').first; // aleex@gmail.com -> aleex
+            }
+            _racha = data['racha'] ?? 0;
+          });
+        }
+      } catch (e) {
+        print("Error al cargar datos: $e");
+        if (mounted) setState(() => _userName = 'Atleta');
+      }
+    }
+  }
 
   // --- LÓGICA DE FECHA ---
   String _getFormattedDate() {
@@ -56,8 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${days[now.weekday % 7]}, ${now.day} ${months[now.month - 1]}';
   }
 
-  // --- FUNCIONES DE EDICIÓN ---
-
+  // --- 2. LÓGICA DE BACKEND: ACTUALIZAR DATOS (UPDATE) ---
   void _changeName() {
     TextEditingController controller = TextEditingController(text: _userName);
     showDialog(
@@ -90,10 +128,21 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           TextButton(
-            onPressed: () {
-              if (controller.text.isNotEmpty)
-                setState(() => _userName = controller.text);
-              Navigator.pop(context);
+            onPressed: () async {
+              if (controller.text.trim().isNotEmpty) {
+                String nuevoNombre = controller.text.trim();
+                setState(() => _userName = nuevoNombre);
+
+                // GUARDAMOS EL NUEVO NOMBRE EN FIREBASE
+                User? user = FirebaseAuth.instance.currentUser;
+                if (user != null) {
+                  await FirebaseFirestore.instance
+                      .collection('usuarios')
+                      .doc(user.uid)
+                      .update({'nombre': nuevoNombre});
+                }
+              }
+              if (mounted) Navigator.pop(context);
             },
             child: Text(
               'GUARDAR',
@@ -125,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: cardColor,
         title: const Text(
-          'Color de Perfil y Racha',
+          'Color de Perfil',
           style: TextStyle(color: Colors.white),
         ),
         content: Wrap(
@@ -320,9 +369,12 @@ class _HomeScreenState extends State<HomeScreen> {
             'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1470&auto=format&fit=crop',
           ),
           const SizedBox(height: 30),
-          _buildSectionTitle('Racha actual'),
+
+          // AQUÍ MOSTRAMOS LA RACHA QUE VIENE DE LA BASE DE DATOS
+          _buildSectionTitle('Racha actual: 🔥 $_racha días'),
           _buildStreakCalendar(),
           const SizedBox(height: 30),
+
           _buildSectionTitle('Recomendaciones de IA'),
           _buildRoutineCard(
             'Ver análisis de IA',
@@ -522,13 +574,19 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             _buildSettingsItem('Conócenos', () {}),
             _buildSettingsItem('Legal y Privacidad', () {}),
-            _buildSettingsItem('Cerrar sesión', () {
-              Navigator.pop(context);
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (c) => const WelcomeScreen()),
-                (r) => false,
-              );
+
+            // --- 3. LÓGICA DE BACKEND: CERRAR SESIÓN ---
+            _buildSettingsItem('Cerrar sesión', () async {
+              await FirebaseAuth.instance.signOut(); // Desconecta del servidor
+              if (mounted) {
+                Navigator.pop(context); // Cierra el modal inferior
+                Navigator.pushAndRemoveUntil(
+                  // Vuelve al inicio borrando el historial
+                  context,
+                  MaterialPageRoute(builder: (c) => const WelcomeScreen()),
+                  (r) => false,
+                );
+              }
             }, isDestructive: true),
           ],
         ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // <--- IMPORTANTE: Importamos Firebase Auth
 import 'register_screen.dart';
 import 'home_screen.dart';
 
@@ -10,16 +11,78 @@ class WelcomeScreen extends StatefulWidget {
 }
 
 class _WelcomeScreenState extends State<WelcomeScreen> {
-  // 1. CREAMOS LOS CONTROLADORES
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
+  bool _isLoading =
+      false; // <--- Añadimos estado de carga para que no pulsen 20 veces
+
   @override
   void dispose() {
-    // Es buena práctica limpiar los controladores al cerrar la pantalla
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  // --- FUNCIÓN DE INICIO DE SESIÓN REAL ---
+  Future<void> _iniciarSesion() async {
+    String email = _emailController.text.trim();
+    String password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      _mostrarError('Por favor, rellena todos los campos');
+      return;
+    }
+
+    setState(() => _isLoading = true); // Ponemos el botón en "Cargando..."
+
+    try {
+      // 1. EL PORTERO: Pedimos a Firebase que verifique las credenciales
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // 2. LA PUERTA: Si la línea anterior no da error, entramos
+      if (mounted) {
+        Navigator.pushReplacement(
+          // Mejor pushReplacement para no poder volver al login con la flecha
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      // 3. EL BLOQUEO: Si las credenciales son falsas
+      print("Error de Login: ${e.code}"); // Chivato para ti
+      String mensaje = "Error al iniciar sesión";
+
+      if (e.code == 'user-not-found' ||
+          e.code == 'invalid-credential' ||
+          e.code == 'wrong-password') {
+        mensaje = "Correo o contraseña incorrectos.";
+      } else if (e.code == 'invalid-email') {
+        mensaje = "El formato del correo no es válido.";
+      }
+
+      _mostrarError(mensaje);
+    } catch (e) {
+      _mostrarError("Error de conexión al servidor.");
+    } finally {
+      if (mounted)
+        setState(() => _isLoading = false); // Quitamos el "Cargando..."
+    }
+  }
+
+  void _mostrarError(String mensaje) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          mensaje,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
   }
 
   @override
@@ -46,15 +109,15 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 children: [
                   const SizedBox(height: 80),
                   Image.asset('assets/images/logo_kilo.png', height: 100),
-                  const SizedBox(height: 10), // Espacio entre logo y nombre
+                  const SizedBox(height: 10),
                   const Text(
                     'KI-LO',
                     style: TextStyle(
-                      fontFamily: 'Ubuntu', // <--- AQUÍ USAMOS LA FUENTE
+                      fontFamily: 'Ubuntu',
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
-                      letterSpacing: 4.0, // Para que quede más "premium"
+                      letterSpacing: 4.0,
                     ),
                   ),
                   const SizedBox(height: 40),
@@ -68,58 +131,59 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                   const SizedBox(height: 10),
                   const Text(
-                    'Introduce tu correo electrónico o usuario para iniciar tu sesión',
+                    'Introduce tu correo electrónico para iniciar tu sesión',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
 
                   const SizedBox(height: 40),
 
-                  // 2. PASAMOS LOS CONTROLADORES A LOS TEXTFIELDS
+                  // TEXTFIELDS
                   _buildTextField('email@domain.com', _emailController),
                   const SizedBox(height: 15),
                   _buildTextField(
-                    'password',
+                    'Contraseña',
                     _passwordController,
                     isPassword: true,
                   ),
 
                   const SizedBox(height: 25),
 
-                  // 3. BOTÓN INICIAR SESIÓN CON LÓGICA
-                  _buildMainButton(
-                    'Iniciar sesión',
-                    Colors.white,
-                    Colors.black,
-                    () {
-                      // Por ahora, solo comprobamos que no estén vacíos
-                      if (_emailController.text.isNotEmpty &&
-                          _passwordController.text.isNotEmpty) {
-                        print("Email: ${_emailController.text}");
-                        print("Pass: ${_passwordController.text}");
-
-                        // NAVEGAMOS AL HOME
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const HomeScreen(),
-                          ),
-                        );
-                      } else {
-                        // Si están vacíos, mostramos un aviso rápido
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Por favor, rellena todos los campos',
+                  // BOTÓN INICIAR SESIÓN
+                  SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton(
+                      onPressed: _isLoading
+                          ? null
+                          : _iniciarSesion, // <--- Conectado a Firebase
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.black,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text(
+                              'Iniciar sesión',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
-                          ),
-                        );
-                      }
-                    },
+                    ),
                   ),
 
                   const SizedBox(height: 20),
-                  // ... (resto de botones sociales y separador igual que antes) ...
                   const Row(
                     children: [
                       Expanded(child: Divider(color: Colors.white30)),
@@ -144,18 +208,35 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 15),
-                  _buildMainButton(
-                    'Registrarme',
-                    Colors.white,
-                    Colors.black,
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const RegisterScreen(),
+
+                  // BOTÓN DE REGISTRO (Va a RegisterScreen, NO a PasswordScreen)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RegisterScreen(),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                      );
-                    },
+                      ),
+                      child: const Text(
+                        'Registrarme',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 50),
                 ],
@@ -167,14 +248,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     );
   }
 
-  // WIDGETS AUXILIARES ACTUALIZADOS PARA RECIBIR EL CONTROLADOR
   Widget _buildTextField(
     String hint,
     TextEditingController controller, {
     bool isPassword = false,
   }) {
     return TextField(
-      controller: controller, // <--- Conectamos el controlador
+      controller: controller,
       obscureText: isPassword,
       style: const TextStyle(color: Colors.black),
       decoration: InputDecoration(
@@ -188,32 +268,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide.none,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMainButton(
-    String text,
-    Color bg,
-    Color textCol,
-    VoidCallback onTap,
-  ) {
-    return SizedBox(
-      width: double.infinity,
-      height: 55,
-      child: ElevatedButton(
-        onPressed: onTap,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: bg,
-          foregroundColor: textCol,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-        child: Text(
-          text,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
       ),
     );

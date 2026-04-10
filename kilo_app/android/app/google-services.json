@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "800268694261",
+    "project_id": "ki-lo-3d556",
+    "storage_bucket": "ki-lo-3d556.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:800268694261:android:c6087f6e1452298b2b8bbc",
+        "android_client_info": {
+          "package_name": "com.example.kilo_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDeH_X41LRQQ2i8Xq24lvwqaqto3pRIOjU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

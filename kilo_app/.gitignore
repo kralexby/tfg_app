@@ -43,3 +43,13 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+
+
+# --- SECRETOS Y CLAVES DE LA APP KI-LO ---
+# Ignorar configuración de Firebase
+lib/firebase_options.dart
+
+# Ignorar variables de entorno (API Keys de Gemini, etc)
+.env
+.env*

@@ -68,8 +68,9 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     } catch (e) {
       _mostrarError("Error de conexión al servidor.");
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() => _isLoading = false); // Quitamos el "Cargando..."
+      }
     }
   }
 

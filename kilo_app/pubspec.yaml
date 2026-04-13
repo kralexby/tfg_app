@@ -4,8 +4,9 @@ publish_to: 'none'
 
 version: 1.0.0+1
 
+
 environment:
-  sdk: ^3.11.0
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -15,6 +16,9 @@ dependencies:
   firebase_core: ^4.6.0
   firebase_auth: ^6.3.0
   cloud_firestore: ^6.2.0
+  flutter_dotenv: ^5.1.0   
+  google_generative_ai: 0.4.6
+  http: ^1.1.0
 
 dev_dependencies:
   flutter_test:
@@ -30,6 +34,7 @@ flutter:
     - assets/images/gym_bg_registro.jpg
     - assets/images/register_bg.png
     - assets/images/cuestionario_bg.png
+    - .env
 
   fonts:
     - family: Ubuntu

@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart'; // Importa el motor de Firebase
 import 'firebase_options.dart'; // Importa el archivo que generamos antes
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // <-- NUEVO: Para leer el archivo .env
 import 'screens/welcome_screen.dart';
 
 void main() async {
   // 1. Aseguramos que Flutter esté listo para ejecutar código nativo
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. Arrancamos Firebase con la configuración específica de tu proyecto
+  // 2. Cargamos las variables secretas del archivo .env <-- NUEVO
+  await dotenv.load(fileName: ".env");
+
+  // 3. Arrancamos Firebase con la configuración específica de tu proyecto
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const MyApp());

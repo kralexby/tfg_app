@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 
 class CreationFlowScreen extends StatefulWidget {
   const CreationFlowScreen({super.key});
@@ -28,12 +28,10 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
   final TextEditingController _injuryDetailController = TextEditingController();
 
   void _nextStep() {
-    if (_currentStep == 0 && _gender == null) {
+    if (_currentStep == 0 && _gender == null)
       return _mostrarAviso("Selecciona tu género");
-    }
-    if (_currentStep == 1 && _goal == null) {
+    if (_currentStep == 1 && _goal == null)
       return _mostrarAviso("Selecciona tu objetivo");
-    }
     if (_currentStep == 2) {
       if (_ageController.text.isEmpty ||
           _weightController.text.isEmpty ||
@@ -41,9 +39,8 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
         return _mostrarAviso("Rellena todas tus medidas");
       }
     }
-    if (_currentStep == 3 && _frequency == null) {
+    if (_currentStep == 3 && _frequency == null)
       return _mostrarAviso("Selecciona una frecuencia");
-    }
     if (_currentStep == 4) {
       if (_injury == null && _injuryDetailController.text.isEmpty) {
         return _mostrarAviso("Indica si tienes alguna lesión");
@@ -54,9 +51,7 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
       _generarRutinaYGuardar();
     } else if (_currentStep < 5) {
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
     } else {
       Navigator.pop(context);
     }
@@ -64,23 +59,20 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
 
   void _mostrarAviso(String texto) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(texto), backgroundColor: Colors.red),
-    );
+        SnackBar(content: Text(texto), backgroundColor: Colors.redAccent));
   }
 
-  // --- LÓGICA DE IA Y PERSISTENCIA (Sustituido y Corregido) ---
+  // --- MAGIA DE LA IA (CON REINTENTO AUTOMÁTICO PARA ERRORES 503) ---
   Future<void> _generarRutinaYGuardar() async {
     setState(() {
       _isGenerating = true;
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
     });
 
     try {
       User? user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
+      if (user == null) throw Exception("Usuario no autenticado");
 
       double peso =
           double.tryParse(_weightController.text.replaceAll(',', '.')) ?? 0;
@@ -89,91 +81,129 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
       String lesionFinal =
           _injury == 'none' ? 'Ninguna' : _injuryDetailController.text;
 
-      final apiKey = dotenv.env['GEMINI_API_KEY'];
-      if (apiKey == null) throw Exception('API Key no encontrada');
-
-      // Endpoint estable v1
-      final url = Uri.parse(
-          'https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=$apiKey');
-
-      final prompt = '''
-      Actúa como un entrenador personal experto. Genera una rutina de gimnasio basada en estos datos:
-      Género: $_gender, Edad: $edad, Peso: $peso kg, Altura: $altura cm, Objetivo: $_goal, Frecuencia: $_frequency, Lesiones: $lesionFinal.
-
-      IMPORTANTE: Responde ÚNICAMENTE con un objeto JSON válido. No incluyas texto explicativo, ni introducciones, ni etiquetas markdown de código.
-      
-      Estructura requerida:
-      {
-        "nombre": "Nombre de la rutina",
-        "descripcion": "Breve descripción",
-        "planificacion": [
-          {
-            "dia": "Día 1",
-            "musculo": "Grupo muscular",
-            "ejercicios": [{"nombre": "Nombre ej", "series": 4, "repeticiones": "12"}]
-          }
-        ]
-      }
-      ''';
-
-      final body = jsonEncode({
-        "contents": [
-          {
-            "parts": [
-              {"text": prompt}
-            ]
-          }
-        ],
-        "generationConfig": {
-          "temperature": 0.7,
-        }
+      await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(user.uid)
+          .update({
+        'genero': _gender,
+        'objetivo': _goal,
+        'peso': peso,
+        'altura': altura,
+        'edad': edad,
+        'frecuencia': _frequency,
+        'lesiones': lesionFinal,
       });
 
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: body,
+      final apiKey = dotenv.env['GEMINI_API_KEY'];
+      if (apiKey == null || apiKey.isEmpty)
+        throw Exception('API Key no encontrada en el archivo .env');
+
+      final model = GenerativeModel(
+        model: 'gemini-flash-latest',
+        apiKey: apiKey,
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      final prompt = '''
+      Eres un entrenador personal de élite. Crea una rutina de gimnasio dividida por días.
+      Responde ÚNICAMENTE con un ARRAY (lista) en formato JSON estricto, donde cada elemento del array sea una rutina independiente para un día de entrenamiento.
+      NO escribas texto fuera del JSON. NO uses markdown de código.
+      
+      Datos del usuario:
+      - Género: $_gender, Edad: $edad, Peso: $peso kg, Altura: $altura cm, Objetivo: $_goal.
+      - Frecuencia: $_frequency días/semana. Lesiones: $lesionFinal.
 
-        if (data['candidates'] == null || data['candidates'].isEmpty) {
-          throw Exception('La IA no devolvió candidatos');
+      Estructura obligatoria del JSON (devuelve un ARRAY de objetos como este):
+      [
+        {
+          "nombre": "DÍA 1: Pecho y Tríceps (IA)",
+          "descripcion": "Rutina adaptada a tus datos",
+          "planificacion": [
+            {
+              "dia": "Ejercicios de la sesión",
+              "musculo": "Pecho y Tríceps",
+              "ejercicios": [
+                {"nombre": "Press de Banca", "series": 4, "repeticiones": "10"}
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "DÍA 2: Espalda y Bíceps (IA)",
+          "descripcion": "Rutina adaptada a tus datos",
+          "planificacion": [
+            {
+              "dia": "Ejercicios de la sesión",
+              "musculo": "Espalda y Bíceps",
+              "ejercicios": [
+                {"nombre": "Dominadas", "series": 4, "repeticiones": "8"}
+              ]
+            }
+          ]
         }
+      ]
+      
+      Genera exactamente tantas rutinas independientes en el array como indique la Frecuencia ($_frequency días/semana).
+      ''';
 
-        String rawJson = data['candidates'][0]['content']['parts'][0]['text'];
+      // --- SISTEMA DE REINTENTOS PARA EVITAR EL ERROR 503 DE GOOGLE ---
+      int maxReintentos = 3;
+      int intentoActual = 0;
+      String rawJson = '';
+      bool exito = false;
 
-        // Limpieza de seguridad por si la IA usa bloques de código
-        rawJson =
-            rawJson.replaceAll('```json', '').replaceAll('```', '').trim();
+      while (intentoActual < maxReintentos && !exito) {
+        try {
+          final response = await model.generateContent([Content.text(prompt)]);
+          rawJson = response.text ?? '';
+          exito = true; // Si llega aquí, no hubo error 503
+        } catch (e) {
+          intentoActual++;
+          if (e.toString().contains('503') && intentoActual < maxReintentos) {
+            print(
+                "Google está saturado (Error 503). Reintentando en 3 segundos... (Intento $intentoActual)");
+            await Future.delayed(const Duration(
+                seconds: 3)); // Espera 3 segundos y vuelve a probar
+          } else {
+            rethrow; // Si es otro error distinto al 503, lo lanza normalmente
+          }
+        }
+      }
+      // ----------------------------------------------------------------
 
+      rawJson = rawJson.replaceAll('```json', '').replaceAll('```', '').trim();
+      if (rawJson.isEmpty) throw Exception("La respuesta de la IA está vacía.");
+
+      List<dynamic> rutinasGeneradas = jsonDecode(rawJson);
+
+      for (var rutina in rutinasGeneradas) {
         await FirebaseFirestore.instance
             .collection('usuarios')
             .doc(user.uid)
             .collection('rutinas')
             .add({
-          'rutina_json': rawJson,
+          'rutina_json': jsonEncode(rutina),
           'fecha_creacion': FieldValue.serverTimestamp(),
           'activa': true,
+          'es_ia': true, //
         });
-
-        if (mounted) {
-          setState(() => _isGenerating = false);
-        }
-      } else {
-        print("Error de Google (Cuerpo): ${response.body}");
-        throw Exception('Error API: ${response.statusCode}');
       }
+
+      await Future.delayed(const Duration(seconds: 1));
+      if (mounted) Navigator.pop(context);
     } catch (e) {
-      print("ERROR DETALLADO: $e");
-      _mostrarAviso("Error al generar rutina. Revisa tu conexión.");
+      print("ERROR IA DETALLADO: $e");
+
       if (mounted) {
+        if (e.toString().contains('503')) {
+          _mostrarAviso(
+              "Los servidores de IA están muy ocupados. Por favor, inténtalo de nuevo en unos minutos.");
+        } else {
+          _mostrarAviso("Error conectando con la IA. Por favor, reintenta.");
+        }
         setState(() => _isGenerating = false);
         _pageController.previousPage(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut);
       }
     }
   }
@@ -181,9 +211,7 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
   void _previousStep() {
     if (_currentStep > 0) {
       _pageController.previousPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
     } else {
       Navigator.pop(context);
     }
@@ -206,24 +234,19 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
       body: Stack(
         children: [
           Container(
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage('assets/images/gym_bg_registro.jpg'),
-                fit: BoxFit.cover,
-              ),
-            ),
-          ),
+              decoration: const BoxDecoration(
+                  image: DecorationImage(
+                      image: AssetImage('assets/images/gym_bg_registro.jpg'),
+                      fit: BoxFit.cover))),
           Container(color: Colors.black.withOpacity(0.8)),
-          if (_currentStep < 5 && !_isGenerating)
+          if (_currentStep < 5)
             Positioned(
-              top: 50,
-              left: 20,
-              child: IconButton(
-                icon:
-                    const Icon(Icons.arrow_back, color: Colors.white, size: 28),
-                onPressed: _previousStep,
-              ),
-            ),
+                top: 50,
+                left: 20,
+                child: IconButton(
+                    icon: const Icon(Icons.arrow_back,
+                        color: Colors.white, size: 28),
+                    onPressed: _previousStep)),
           SafeArea(
             child: Column(
               children: [
@@ -253,7 +276,6 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
     );
   }
 
-  // --- WIDGETS DE SOPORTE ---
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 20),
@@ -281,11 +303,10 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
         child: ElevatedButton(
           onPressed: _nextStep,
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red,
-            foregroundColor: Colors.white,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10))),
           child: Text(_currentStep == 5 ? 'Ir a mi Home' : 'Continuar',
               style:
                   const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -294,142 +315,165 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
     );
   }
 
-  // --- PASOS DEL CUESTIONARIO ---
-  Widget _stepGender() => _buildStepLayout(
-      title: 'Selecciona tu género',
-      content: Column(children: [
-        _buildSelectionCard('Hombre', _gender == 'Hombre',
-            () => setState(() => _gender = 'Hombre')),
-        const SizedBox(height: 15),
-        _buildSelectionCard('Mujer', _gender == 'Mujer',
-            () => setState(() => _gender = 'Mujer'))
-      ]));
-  Widget _stepGoal() => _buildStepLayout(
-      title: '¿Cuál es tu objetivo?',
-      content: Column(children: [
-        _buildSelectionCard('Perder grasa', _goal == 'Perder grasa',
-            () => setState(() => _goal = 'Perder grasa')),
-        const SizedBox(height: 10),
-        _buildSelectionCard(
-            'Ganar masa muscular',
-            _goal == 'Ganar masa muscular',
-            () => setState(() => _goal = 'Ganar masa muscular')),
-        const SizedBox(height: 10),
-        _buildSelectionCard('Ganar fuerza', _goal == 'Ganar fuerza',
-            () => setState(() => _goal = 'Ganar fuerza')),
-        const SizedBox(height: 10),
-        _buildSelectionCard(
-            'Mejorar resistencia',
-            _goal == 'Mejorar resistencia',
-            () => setState(() => _goal = 'Mejorar resistencia'))
-      ]));
-  Widget _stepPhysical() => _buildStepLayout(
-      title: 'Tus parámetros físicos',
-      content: Column(children: [
-        _buildInputField('Edad (años)', _ageController, TextInputType.number),
-        const SizedBox(height: 15),
-        _buildInputField('Peso (kg)', _weightController,
-            const TextInputType.numberWithOptions(decimal: true)),
-        const SizedBox(height: 15),
-        _buildInputField('Altura (cm)', _heightController, TextInputType.number)
-      ]));
-  Widget _stepFrequency() => _buildStepLayout(
-      title: '¿Frecuencia de entrenamiento?',
-      content: Column(children: [
-        _buildSelectionCard('2 - 3 días a la semana', _frequency == '2-3',
-            () => setState(() => _frequency = '2-3')),
-        const SizedBox(height: 10),
-        _buildSelectionCard('3 - 4 días a la semana', _frequency == '3-4',
-            () => setState(() => _frequency = '3-4')),
-        const SizedBox(height: 10),
-        _buildSelectionCard('5 - 6 días a la semana', _frequency == '5-6',
-            () => setState(() => _frequency = '5-6'))
-      ]));
-  Widget _stepInjury() => _buildStepLayout(
-      title: '¿Alguna lesión o limitación?',
-      content: Column(children: [
-        _buildInputField('Escríbelo aquí (ej: rodilla)',
-            _injuryDetailController, TextInputType.text),
-        const SizedBox(height: 15),
-        _buildSelectionCard('No tengo ninguna lesión', _injury == 'none', () {
-          setState(() {
-            _injury = 'none';
-            _injuryDetailController.clear();
-          });
-        })
-      ]));
-  Widget _stepFinal() => _buildStepLayout(
-      title:
-          _isGenerating ? 'KI-LO está creando tu plan...' : '¡Rutina Generada!',
-      content: Column(children: [
-        if (_isGenerating) ...[
-          const CircularProgressIndicator(color: Colors.red, strokeWidth: 4),
-          const SizedBox(height: 30),
-          const Text('Analizando tus métricas con IA...',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70, fontSize: 16))
-        ] else ...[
-          const Icon(Icons.check_circle_outline,
-              color: Colors.green, size: 100),
-          const SizedBox(height: 20),
-          const Text('Tu plan personalizado está listo.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontSize: 16))
-        ]
-      ]));
+  Widget _stepGender() {
+    return _buildStepLayout(
+        title: 'Selecciona tu género',
+        content: Column(children: [
+          _buildSelectionCard('Hombre', _gender == 'Hombre',
+              () => setState(() => _gender = 'Hombre')),
+          const SizedBox(height: 15),
+          _buildSelectionCard('Mujer', _gender == 'Mujer',
+              () => setState(() => _gender = 'Mujer'))
+        ]));
+  }
 
-  Widget _buildStepLayout({required String title, required Widget content}) =>
-      Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 30),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(title,
+  Widget _stepGoal() {
+    return _buildStepLayout(
+        title: '¿Cuál es tu objetivo?',
+        content: Column(children: [
+          _buildSelectionCard('Perder grasa', _goal == 'Perder grasa',
+              () => setState(() => _goal = 'Perder grasa')),
+          const SizedBox(height: 10),
+          _buildSelectionCard(
+              'Ganar masa muscular',
+              _goal == 'Ganar masa muscular',
+              () => setState(() => _goal = 'Ganar masa muscular')),
+          const SizedBox(height: 10),
+          _buildSelectionCard('Ganar fuerza', _goal == 'Ganar fuerza',
+              () => setState(() => _goal = 'Ganar fuerza')),
+          const SizedBox(height: 10),
+          _buildSelectionCard(
+              'Mejorar resistencia',
+              _goal == 'Mejorar resistencia',
+              () => setState(() => _goal = 'Mejorar resistencia'))
+        ]));
+  }
+
+  Widget _stepPhysical() {
+    return _buildStepLayout(
+        title: 'Tus parámetros físicos',
+        content: Column(children: [
+          _buildInputField('Edad (años)', _ageController, TextInputType.number),
+          const SizedBox(height: 15),
+          _buildInputField('Peso (kg)', _weightController,
+              const TextInputType.numberWithOptions(decimal: true)),
+          const SizedBox(height: 15),
+          _buildInputField(
+              'Altura (cm)', _heightController, TextInputType.number)
+        ]));
+  }
+
+  Widget _stepFrequency() {
+    return _buildStepLayout(
+        title: '¿Frecuencia de entrenamiento?',
+        content: Column(children: [
+          _buildSelectionCard('2 - 3 días a la semana', _frequency == '2-3',
+              () => setState(() => _frequency = '2-3')),
+          const SizedBox(height: 10),
+          _buildSelectionCard('3 - 4 días a la semana', _frequency == '3-4',
+              () => setState(() => _frequency = '3-4')),
+          const SizedBox(height: 10),
+          _buildSelectionCard('5 - 6 días a la semana', _frequency == '5-6',
+              () => setState(() => _frequency = '5-6'))
+        ]));
+  }
+
+  Widget _stepInjury() {
+    return _buildStepLayout(
+        title: '¿Alguna lesión o limitación?',
+        content: Column(children: [
+          _buildInputField('Escríbelo aquí (ej: rodilla)',
+              _injuryDetailController, TextInputType.text),
+          const SizedBox(height: 15),
+          _buildSelectionCard('No tengo ninguna lesión', _injury == 'none', () {
+            setState(() {
+              _injury = 'none';
+              _injuryDetailController.clear();
+            });
+          })
+        ]));
+  }
+
+  Widget _stepFinal() {
+    return _buildStepLayout(
+        title: _isGenerating
+            ? 'KI-LO está creando tu plan...'
+            : '¡Aquí está tu rutina!',
+        content: Column(children: [
+          if (_isGenerating) ...[
+            const CircularProgressIndicator(color: Colors.red, strokeWidth: 4),
+            const SizedBox(height: 30),
+            const Text(
+                'Analizando tus métricas y objetivos mediante Inteligencia Artificial...',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(height: 40),
-            content
-          ]));
-  Widget _buildSelectionCard(
-          String text, bool isSelected, VoidCallback onTap) =>
-      InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              decoration: BoxDecoration(
-                  color:
-                      isSelected ? Colors.white : Colors.white.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(10),
-                  border: isSelected
-                      ? Border.all(color: Colors.red, width: 3)
-                      : null),
-              child: Text(text,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16))));
+                style: TextStyle(color: Colors.white70, fontSize: 16))
+          ] else ...[
+            const Icon(Icons.check_circle_outline,
+                color: Colors.green, size: 100),
+            const SizedBox(height: 20),
+            const Text('Tu plan personalizado está listo para ser ejecutado.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white, fontSize: 16))
+          ]
+        ]));
+  }
+
+  Widget _buildStepLayout({required String title, required Widget content}) {
+    return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 30),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text(title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold)),
+          const SizedBox(height: 40),
+          content
+        ]));
+  }
+
+  Widget _buildSelectionCard(String text, bool isSelected, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          decoration: BoxDecoration(
+              color: isSelected ? Colors.white : Colors.white.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(10),
+              border:
+                  isSelected ? Border.all(color: Colors.red, width: 3) : null),
+          child: Text(text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16))),
+    );
+  }
+
   Widget _buildInputField(
-          String hint, TextEditingController controller, TextInputType type) =>
-      TextField(
-          controller: controller,
-          keyboardType: type,
-          onChanged: (val) {
-            if (hint.contains('Escríbelo'))
-              setState(() => _injury = val.isEmpty ? null : 'custom');
-          },
-          style: const TextStyle(color: Colors.black),
-          decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: const TextStyle(color: Colors.black54),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding:
-                  const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none)));
+      String hint, TextEditingController controller, TextInputType type) {
+    return TextField(
+      controller: controller,
+      keyboardType: type,
+      onChanged: (val) {
+        if (hint.contains('Escríbelo'))
+          setState(() => _injury = val.isEmpty ? null : 'custom');
+      },
+      style: const TextStyle(color: Colors.black),
+      decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: Colors.black54),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding:
+              const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide.none)),
+    );
+  }
 }

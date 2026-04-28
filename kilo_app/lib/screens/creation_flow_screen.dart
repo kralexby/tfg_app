@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 import 'package:google_generative_ai/google_generative_ai.dart';
+
 import 'dart:convert';
 
 class CreationFlowScreen extends StatefulWidget {
@@ -14,24 +19,36 @@ class CreationFlowScreen extends StatefulWidget {
 
 class _CreationFlowScreenState extends State<CreationFlowScreen> {
   final PageController _pageController = PageController();
+
   int _currentStep = 0;
+
   bool _isGenerating = false;
 
   // --- VARIABLES PARA GUARDAR LA INFO ---
+
   String? _gender;
+
   String? _goal;
+
   String? _frequency;
+
   String? _injury;
+
   final TextEditingController _ageController = TextEditingController();
+
   final TextEditingController _weightController = TextEditingController();
+
   final TextEditingController _heightController = TextEditingController();
+
   final TextEditingController _injuryDetailController = TextEditingController();
 
   void _nextStep() {
     if (_currentStep == 0 && _gender == null)
       return _mostrarAviso("Selecciona tu género");
+
     if (_currentStep == 1 && _goal == null)
       return _mostrarAviso("Selecciona tu objetivo");
+
     if (_currentStep == 2) {
       if (_ageController.text.isEmpty ||
           _weightController.text.isEmpty ||
@@ -39,8 +56,10 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
         return _mostrarAviso("Rellena todas tus medidas");
       }
     }
+
     if (_currentStep == 3 && _frequency == null)
       return _mostrarAviso("Selecciona una frecuencia");
+
     if (_currentStep == 4) {
       if (_injury == null && _injuryDetailController.text.isEmpty) {
         return _mostrarAviso("Indica si tienes alguna lesión");
@@ -63,21 +82,27 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
   }
 
   // --- MAGIA DE LA IA (CON REINTENTO AUTOMÁTICO PARA ERRORES 503) ---
+
   Future<void> _generarRutinaYGuardar() async {
     setState(() {
       _isGenerating = true;
+
       _pageController.nextPage(
           duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
     });
 
     try {
       User? user = FirebaseAuth.instance.currentUser;
+
       if (user == null) throw Exception("Usuario no autenticado");
 
       double peso =
           double.tryParse(_weightController.text.replaceAll(',', '.')) ?? 0;
+
       int altura = int.tryParse(_heightController.text) ?? 0;
+
       int edad = int.tryParse(_ageController.text) ?? 0;
+
       String lesionFinal =
           _injury == 'none' ? 'Ninguna' : _injuryDetailController.text;
 
@@ -95,6 +120,7 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
       });
 
       final apiKey = dotenv.env['GEMINI_API_KEY'];
+
       if (apiKey == null || apiKey.isEmpty)
         throw Exception('API Key no encontrada en el archivo .env');
 
@@ -104,63 +130,111 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
       );
 
       final prompt = '''
+
       Eres un entrenador personal de élite. Crea una rutina de gimnasio dividida por días.
+
       Responde ÚNICAMENTE con un ARRAY (lista) en formato JSON estricto, donde cada elemento del array sea una rutina independiente para un día de entrenamiento.
+
       NO escribas texto fuera del JSON. NO uses markdown de código.
-      
+
+     
+
       Datos del usuario:
+
       - Género: $_gender, Edad: $edad, Peso: $peso kg, Altura: $altura cm, Objetivo: $_goal.
+
       - Frecuencia: $_frequency días/semana. Lesiones: $lesionFinal.
 
+
+
       Estructura obligatoria del JSON (devuelve un ARRAY de objetos como este):
+
       [
+
         {
+
           "nombre": "DÍA 1: Pecho y Tríceps (IA)",
+
           "descripcion": "Rutina adaptada a tus datos",
+
           "planificacion": [
+
             {
+
               "dia": "Ejercicios de la sesión",
+
               "musculo": "Pecho y Tríceps",
+
               "ejercicios": [
+
                 {"nombre": "Press de Banca", "series": 4, "repeticiones": "10"}
+
               ]
+
             }
+
           ]
+
         },
+
         {
+
           "nombre": "DÍA 2: Espalda y Bíceps (IA)",
+
           "descripcion": "Rutina adaptada a tus datos",
+
           "planificacion": [
+
             {
+
               "dia": "Ejercicios de la sesión",
+
               "musculo": "Espalda y Bíceps",
+
               "ejercicios": [
+
                 {"nombre": "Dominadas", "series": 4, "repeticiones": "8"}
+
               ]
+
             }
+
           ]
+
         }
+
       ]
-      
+
+     
+
       Genera exactamente tantas rutinas independientes en el array como indique la Frecuencia ($_frequency días/semana).
+
       ''';
 
       // --- SISTEMA DE REINTENTOS PARA EVITAR EL ERROR 503 DE GOOGLE ---
+
       int maxReintentos = 3;
+
       int intentoActual = 0;
+
       String rawJson = '';
+
       bool exito = false;
 
       while (intentoActual < maxReintentos && !exito) {
         try {
           final response = await model.generateContent([Content.text(prompt)]);
+
           rawJson = response.text ?? '';
+
           exito = true; // Si llega aquí, no hubo error 503
         } catch (e) {
           intentoActual++;
+
           if (e.toString().contains('503') && intentoActual < maxReintentos) {
             print(
                 "Google está saturado (Error 503). Reintentando en 3 segundos... (Intento $intentoActual)");
+
             await Future.delayed(const Duration(
                 seconds: 3)); // Espera 3 segundos y vuelve a probar
           } else {
@@ -168,9 +242,11 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
           }
         }
       }
+
       // ----------------------------------------------------------------
 
       rawJson = rawJson.replaceAll('```json', '').replaceAll('```', '').trim();
+
       if (rawJson.isEmpty) throw Exception("La respuesta de la IA está vacía.");
 
       List<dynamic> rutinasGeneradas = jsonDecode(rawJson);
@@ -182,13 +258,17 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
             .collection('rutinas')
             .add({
           'rutina_json': jsonEncode(rutina),
+
           'fecha_creacion': FieldValue.serverTimestamp(),
+
           'activa': true,
+
           'es_ia': true, //
         });
       }
 
       await Future.delayed(const Duration(seconds: 1));
+
       if (mounted) Navigator.pop(context);
     } catch (e) {
       print("ERROR IA DETALLADO: $e");
@@ -200,7 +280,9 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
         } else {
           _mostrarAviso("Error conectando con la IA. Por favor, reintenta.");
         }
+
         setState(() => _isGenerating = false);
+
         _pageController.previousPage(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut);
@@ -220,10 +302,15 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
   @override
   void dispose() {
     _pageController.dispose();
+
     _ageController.dispose();
+
     _weightController.dispose();
+
     _heightController.dispose();
+
     _injuryDetailController.dispose();
+
     super.dispose();
   }
 
@@ -388,6 +475,7 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
           _buildSelectionCard('No tengo ninguna lesión', _injury == 'none', () {
             setState(() {
               _injury = 'none';
+
               _injuryDetailController.clear();
             });
           })

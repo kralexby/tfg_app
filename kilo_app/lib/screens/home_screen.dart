@@ -1860,7 +1860,18 @@ class _RoutineReviewScreenState extends State<RoutineReviewScreen> {
           });
         }
 
-        if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+        // --- AQUÍ ESTÁ LA SOLUCIÓN DEL NAVEGADOR ---
+        if (mounted) {
+          if (widget.routineId != null) {
+            // Si estábamos editando, retrocedemos 1 pantalla
+            Navigator.pop(context);
+          } else {
+            // Si estábamos creando nueva, retrocedemos 2 pantallas para llegar al Home
+            Navigator.pop(context);
+            Navigator.pop(context);
+          }
+        }
+        // -------------------------------------------
       }
     } catch (e) {
       if (mounted) {

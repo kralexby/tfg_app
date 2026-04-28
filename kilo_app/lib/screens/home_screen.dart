@@ -28,7 +28,9 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _rutinasIA = [];
   bool _mostrarRutinasIA = false; // Controla el interruptor (toggle)
 
-  Map<int, String> _historialMes = {};
+  // --- ESTADO DEL CALENDARIO DINÁMICO ---
+  DateTime _selectedMonth = DateTime.now();
+  Map<String, String> _historialEntrenos = {};
   bool _cargandoRutina = true;
 
   static const Color backgroundColor = Color(0xFF1E1E1E);
@@ -70,12 +72,10 @@ class _HomeScreenState extends State<HomeScreen> {
           Map<String, dynamic> rutinaDecoded = jsonDecode(jsonString);
           rutinaDecoded['id'] = doc.id;
 
-          // Clasificador: IA vs Manual
           bool esIA = false;
           try {
             esIA = doc.get('es_ia') ?? false;
           } catch (e) {
-            // Retrocompatibilidad por si hay rutinas viejas
             esIA = (rutinaDecoded['nombre'] ?? '').toString().contains('(IA)');
           }
 
@@ -92,20 +92,19 @@ class _HomeScreenState extends State<HomeScreen> {
             .collection('historial_entrenamientos')
             .get();
 
-        Map<int, String> historialTemp = {};
+        Map<String, String> historialTemp = {};
         for (var doc in historialQuery.docs) {
           DateTime fecha = (doc['fecha'] as Timestamp).toDate();
-          if (fecha.month == DateTime.now().month) {
-            historialTemp[fecha.day] =
-                doc['nombre_rutina'] ?? 'Rutina completada';
-          }
+          String dateKey =
+              "${fecha.year}-${fecha.month.toString().padLeft(2, '0')}-${fecha.day.toString().padLeft(2, '0')}";
+          historialTemp[dateKey] = doc['nombre_rutina'] ?? 'Rutina completada';
         }
 
         if (mounted) {
           setState(() {
             _misRutinas = rutinasManualesTemp;
             _rutinasIA = rutinasIATemp;
-            _historialMes = historialTemp;
+            _historialEntrenos = historialTemp;
             _cargandoRutina = false;
           });
         }
@@ -114,6 +113,32 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) setState(() => _cargandoRutina = false);
       }
     }
+  }
+
+  // --- CONTROLES DE CALENDARIO ---
+  void _cambiarMes(int offset) {
+    setState(() {
+      _selectedMonth =
+          DateTime(_selectedMonth.year, _selectedMonth.month + offset, 1);
+    });
+  }
+
+  String _getNombreMes(int month) {
+    const meses = [
+      'Enero',
+      'Febrero',
+      'Marzo',
+      'Abril',
+      'Mayo',
+      'Junio',
+      'Julio',
+      'Agosto',
+      'Septiembre',
+      'Octubre',
+      'Noviembre',
+      'Diciembre'
+    ];
+    return meses[month - 1];
   }
 
   Future<void> _cargarDatosUsuario() async {
@@ -695,7 +720,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTrainingTab() {
-    // Aquí decidimos qué lista vamos a dibujar según el interruptor
     List<Map<String, dynamic>> listaMostrada =
         _mostrarRutinasIA ? _rutinasIA : _misRutinas;
 
@@ -726,13 +750,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-
-        // --- EL INTERRUPTOR (TOGGLE) ---
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           height: 45,
           decoration: BoxDecoration(
-            color: const Color(0xFF141414), // Fondo oscuro
+            color: const Color(0xFF141414),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
@@ -781,7 +803,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-
         Expanded(
           child: _cargandoRutina
               ? const Center(child: CircularProgressIndicator())
@@ -850,10 +871,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                           color: Colors.white),
                                       color: const Color(0xFF1E1E1E),
                                       onSelected: (value) {
-                                        if (value == 'edit')
+                                        if (value == 'edit') {
                                           _editarRutina(rutina);
-                                        if (value == 'delete')
+                                        }
+                                        if (value == 'delete') {
                                           _eliminarRutina(rutina['id']);
+                                        }
                                       },
                                       itemBuilder: (context) => [
                                         const PopupMenuItem(
@@ -1021,7 +1044,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildStatsTab() {
-    int totalEntrenos = _historialMes.length;
+    int totalEntrenos = 0;
+    String mesActualKey =
+        "${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}";
+    _historialEntrenos.keys.forEach((key) {
+      if (key.startsWith(mesActualKey)) totalEntrenos++;
+    });
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -1095,8 +1123,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     for (int i = 6; i >= 0; i--) {
       DateTime dia = hoy.subtract(Duration(days: i));
-      bool entrenado =
-          dia.month == hoy.month ? _historialMes.containsKey(dia.day) : false;
+
+      String dateKey =
+          "${dia.year}-${dia.month.toString().padLeft(2, '0')}-${dia.day.toString().padLeft(2, '0')}";
+      bool entrenado = _historialEntrenos.containsKey(dateKey);
+
       String nombreDia = ['L', 'M', 'X', 'J', 'V', 'S', 'D'][dia.weekday - 1];
 
       barras.add(Column(
@@ -1200,51 +1231,97 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ====================================================================
+  // NUEVO MOTOR DEL CALENDARIO DINÁMICO
+  // ====================================================================
   Widget _buildStreakCalendar() {
+    int daysInMonth =
+        DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0).day;
+    int firstWeekday =
+        DateTime(_selectedMonth.year, _selectedMonth.month, 1).weekday;
+    int emptySlots = firstWeekday - 1;
+
+    List<String> days = List.filled(emptySlots, '', growable: true);
+    for (int i = 1; i <= daysInMonth; i++) {
+      days.add(i.toString());
+    }
+
+    List<Widget> weeks = [];
+    for (int i = 0; i < days.length; i += 7) {
+      List<String> weekDays =
+          days.sublist(i, (i + 7 > days.length) ? days.length : i + 7).toList();
+      while (weekDays.length < 7) {
+        weekDays.add('');
+      }
+      weeks.add(_buildCalendarWeek(weekDays));
+      if (i + 7 < days.length) weeks.add(const SizedBox(height: 12));
+    }
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration:
           const BoxDecoration(color: cardColor, borderRadius: appCardRadius),
       child: Column(
         children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                  icon: Icon(Icons.chevron_left, color: _accentColor),
+                  onPressed: () => _cambiarMes(-1)),
+              Text(
+                  '${_getNombreMes(_selectedMonth.month)} ${_selectedMonth.year}',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold)),
+              IconButton(
+                  icon: Icon(Icons.chevron_right, color: _accentColor),
+                  onPressed: () => _cambiarMes(1)),
+            ],
+          ),
+          const SizedBox(height: 10),
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _DayHeader('Su'),
-              _DayHeader('Mo'),
-              _DayHeader('Tu'),
-              _DayHeader('We'),
-              _DayHeader('Th'),
-              _DayHeader('Fr'),
-              _DayHeader('Sa')
+              _DayHeader('L'),
+              _DayHeader('M'),
+              _DayHeader('X'),
+              _DayHeader('J'),
+              _DayHeader('V'),
+              _DayHeader('S'),
+              _DayHeader('D')
             ],
           ),
           const SizedBox(height: 16),
-          _buildCalendarWeek(['', '1', '2', '3', '4', '5', '6']),
-          const SizedBox(height: 12),
-          _buildCalendarWeek(['7', '8', '9', '10', '11', '12', '13']),
-          const SizedBox(height: 12),
-          _buildCalendarWeek(['14', '15', '16', '17', '18', '19', '20']),
+          ...weeks,
         ],
       ),
     );
   }
 
   Widget _buildCalendarWeek(List<String> days) {
+    DateTime now = DateTime.now();
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: days.map((d) {
         if (d.isEmpty) return const SizedBox(width: 36);
         int dayNum = int.tryParse(d) ?? 0;
-        bool isTrained = _historialMes.containsKey(dayNum);
-        bool isToday = dayNum == DateTime.now().day;
+
+        String dateKey =
+            "${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}-${dayNum.toString().padLeft(2, '0')}";
+        bool isTrained = _historialEntrenos.containsKey(dateKey);
+
+        bool isToday = dayNum == now.day &&
+            _selectedMonth.month == now.month &&
+            _selectedMonth.year == now.year;
 
         return GestureDetector(
           onTap: () {
             if (isTrained) {
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text('Día $d: ${_historialMes[dayNum]}',
+                content: Text('Día $d: ${_historialEntrenos[dateKey]}',
                     style: const TextStyle(fontWeight: FontWeight.bold)),
                 backgroundColor: _accentColor,
                 duration: const Duration(seconds: 2),
@@ -1268,14 +1345,16 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         color: bg ?? Colors.transparent,
         borderRadius: BorderRadius.circular(8),
-        border: border ? Border.all(color: _accentColor, width: 1.5) : null,
+        border: border ? Border.all(color: _accentColor, width: 2) : null,
       ),
       child: Text(d,
           style: TextStyle(
               color: txt ?? Colors.white,
-              fontWeight: bg != null ? FontWeight.bold : FontWeight.normal)),
+              fontWeight:
+                  bg != null || border ? FontWeight.bold : FontWeight.normal)),
     );
   }
+  // ====================================================================
 
   Widget _buildCustomBottomNav() {
     return Container(

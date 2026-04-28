@@ -1983,9 +1983,18 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   bool _isFinishing = false;
   List<dynamic> _flatExercises = [];
 
+  // Controladores para capturar lo que el usuario escribe
+  Map<int, List<TextEditingController>> _kgControllers = {};
+  Map<int, List<TextEditingController>> _repsControllers = {};
+
+  // Mapas para guardar lo que levantó la última vez
+  Map<String, String> _ultimosPesos = {};
+  Map<String, String> _ultimasReps = {};
+
   @override
   void initState() {
     super.initState();
+    int index = 0;
     List dias = widget.rutina['planificacion'] ?? [];
     for (var dia in dias) {
       for (var ej in (dia['ejercicios'] ?? [])) {
@@ -1993,6 +2002,35 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
           "nombre": ej['nombre'],
           "series": ej['series'],
           "objetivo_reps": ej['repeticiones'].toString(),
+        });
+
+        int series = int.tryParse(ej['series'].toString()) ?? 3;
+        _kgControllers[index] =
+            List.generate(series, (_) => TextEditingController());
+        _repsControllers[index] =
+            List.generate(series, (_) => TextEditingController());
+        index++;
+      }
+    }
+    _cargarDatosAnteriores();
+  }
+
+  // Descarga desde Firebase los kilos y reps registrados en sesiones pasadas
+  Future<void> _cargarDatosAnteriores() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      var doc = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(user.uid)
+          .get();
+      if (doc.exists && mounted) {
+        setState(() {
+          if (doc.data()!.containsKey('ultimos_pesos')) {
+            _ultimosPesos = Map<String, String>.from(doc['ultimos_pesos']);
+          }
+          if (doc.data()!.containsKey('ultimas_reps')) {
+            _ultimasReps = Map<String, String>.from(doc['ultimas_reps']);
+          }
         });
       }
     }
@@ -2003,6 +2041,41 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     try {
       User? user = FirebaseAuth.instance.currentUser;
       if (user != null) {
+        // 1. Recopilar la mejor serie (peso máximo y reps) para cada ejercicio
+        Map<String, String> nuevosPesos = {};
+        Map<String, String> nuevasReps = {};
+
+        for (int i = 0; i < _flatExercises.length; i++) {
+          String nombreEj = _flatExercises[i]['nombre'];
+          double maxKg = 0;
+          int maxReps = 0;
+
+          for (int s = 0; s < _kgControllers[i]!.length; s++) {
+            double valKg = double.tryParse(
+                    _kgControllers[i]![s].text.replaceAll(',', '.')) ??
+                0;
+            int valReps = int.tryParse(_repsControllers[i]![s].text) ?? 0;
+
+            // Buscamos la mejor serie
+            if (valKg > maxKg) {
+              maxKg = valKg;
+              maxReps = valReps;
+            } else if (valKg == maxKg && valReps > maxReps) {
+              maxReps = valReps;
+            }
+          }
+
+          if (maxKg > 0 || maxReps > 0) {
+            String pesoFormateado = maxKg == maxKg.truncateToDouble()
+                ? maxKg.truncate().toString()
+                : maxKg.toStringAsFixed(1);
+
+            nuevosPesos[nombreEj] = pesoFormateado;
+            nuevasReps[nombreEj] = maxReps.toString();
+          }
+        }
+
+        // 2. Guardar en el calendario histórico
         await FirebaseFirestore.instance
             .collection('usuarios')
             .doc(user.uid)
@@ -2012,10 +2085,20 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
           'nombre_rutina': widget.rutina['nombre'],
         });
 
+        // 3. Actualizar racha
         await FirebaseFirestore.instance
             .collection('usuarios')
             .doc(user.uid)
             .update({'racha': FieldValue.increment(1)});
+
+        // 4. Guardar los récords en el perfil del usuario (Merge para no borrar otros ejercicios)
+        if (nuevosPesos.isNotEmpty || nuevasReps.isNotEmpty) {
+          await FirebaseFirestore.instance
+              .collection('usuarios')
+              .doc(user.uid)
+              .set({'ultimos_pesos': nuevosPesos, 'ultimas_reps': nuevasReps},
+                  SetOptions(merge: true));
+        }
 
         if (mounted) {
           showDialog(
@@ -2042,7 +2125,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                         child: ElevatedButton(
                           onPressed: () {
                             Navigator.pop(context);
-                            Navigator.pop(context);
+                            Navigator.pop(context); // Vuelve al Home
                           },
                           style: ElevatedButton.styleFrom(
                               backgroundColor: widget.accentColor),
@@ -2080,6 +2163,10 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                 final ej = _flatExercises[index];
                 int series = int.tryParse(ej['series'].toString()) ?? 3;
 
+                // Textos de ayuda (hint) con los datos anteriores
+                String lastWeight = _ultimosPesos[ej['nombre']] ?? '--';
+                String lastReps = _ultimasReps[ej['nombre']] ?? '--';
+
                 return Container(
                   margin: const EdgeInsets.only(bottom: 20),
                   padding: const EdgeInsets.all(15),
@@ -2116,24 +2203,35 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                               const SizedBox(width: 15),
                               Expanded(
                                   child: TextField(
-                                      keyboardType: TextInputType.number,
+                                      controller: _kgControllers[index]![s - 1],
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                              decimal: true),
                                       style:
                                           const TextStyle(color: Colors.white),
-                                      decoration: const InputDecoration(
-                                          hintText: "kg",
-                                          hintStyle:
-                                              TextStyle(color: Colors.white30),
+                                      decoration: InputDecoration(
+                                          hintText: lastWeight == '--'
+                                              ? "kg"
+                                              : "Últ: $lastWeight kg",
+                                          hintStyle: const TextStyle(
+                                              color: Colors.white30,
+                                              fontSize: 13),
                                           isDense: true))),
                               const SizedBox(width: 15),
                               Expanded(
                                   child: TextField(
+                                      controller:
+                                          _repsControllers[index]![s - 1],
                                       keyboardType: TextInputType.number,
                                       style:
                                           const TextStyle(color: Colors.white),
-                                      decoration: const InputDecoration(
-                                          hintText: "reps",
-                                          hintStyle:
-                                              TextStyle(color: Colors.white30),
+                                      decoration: InputDecoration(
+                                          hintText: lastReps == '--'
+                                              ? "reps"
+                                              : "Últ: $lastReps",
+                                          hintStyle: const TextStyle(
+                                              color: Colors.white30,
+                                              fontSize: 13),
                                           isDense: true))),
                               const SizedBox(width: 15),
                               const Icon(Icons.check_circle_outline,

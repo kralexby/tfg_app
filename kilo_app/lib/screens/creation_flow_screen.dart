@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
-
 import 'package:firebase_auth/firebase_auth.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-
 import 'package:google_generative_ai/google_generative_ai.dart';
-
 import 'dart:convert';
+import 'home_screen.dart'; // IMPORTANTE: Necesitamos importar el Home
 
 class CreationFlowScreen extends StatefulWidget {
   const CreationFlowScreen({super.key});
@@ -19,27 +15,17 @@ class CreationFlowScreen extends StatefulWidget {
 
 class _CreationFlowScreenState extends State<CreationFlowScreen> {
   final PageController _pageController = PageController();
-
   int _currentStep = 0;
-
   bool _isGenerating = false;
 
   // --- VARIABLES PARA GUARDAR LA INFO ---
-
   String? _gender;
-
   String? _goal;
-
   String? _frequency;
-
   String? _injury;
-
   final TextEditingController _ageController = TextEditingController();
-
   final TextEditingController _weightController = TextEditingController();
-
   final TextEditingController _heightController = TextEditingController();
-
   final TextEditingController _injuryDetailController = TextEditingController();
 
   void _nextStep() {
@@ -72,7 +58,12 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
       _pageController.nextPage(
           duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
     } else {
-      Navigator.pop(context);
+      // --- SOLUCIÓN: FORZAR LA NAVEGACIÓN AL HOME ---
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        (Route<dynamic> route) => false,
+      );
     }
   }
 
@@ -82,30 +73,25 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
   }
 
   // --- MAGIA DE LA IA (CON REINTENTO AUTOMÁTICO PARA ERRORES 503) ---
-
   Future<void> _generarRutinaYGuardar() async {
     setState(() {
       _isGenerating = true;
-
       _pageController.nextPage(
           duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
     });
 
     try {
       User? user = FirebaseAuth.instance.currentUser;
-
       if (user == null) throw Exception("Usuario no autenticado");
 
       double peso =
           double.tryParse(_weightController.text.replaceAll(',', '.')) ?? 0;
-
       int altura = int.tryParse(_heightController.text) ?? 0;
-
       int edad = int.tryParse(_ageController.text) ?? 0;
-
       String lesionFinal =
           _injury == 'none' ? 'Ninguna' : _injuryDetailController.text;
 
+      // Guardamos la info del usuario en la base de datos
       await FirebaseFirestore.instance
           .collection('usuarios')
           .doc(user.uid)
@@ -120,137 +106,81 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
       });
 
       final apiKey = dotenv.env['GEMINI_API_KEY'];
-
-      if (apiKey == null || apiKey.isEmpty)
+      if (apiKey == null || apiKey.isEmpty) {
         throw Exception('API Key no encontrada en el archivo .env');
+      }
 
       final model = GenerativeModel(
         model: 'gemini-flash-latest',
         apiKey: apiKey,
+        // Usamos una configuración estricta para asegurar que devuelve un JSON limpio
+        generationConfig: GenerationConfig(
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+        ),
       );
 
       final prompt = '''
+      Eres un entrenador de élite. Crea $_frequency rutinas independientes.
+      Debes devolver un ARRAY JSON estricto. NO DEVUELVAS NINGÚN OTRO TEXTO.
+      
+      Usuario: Género: $_gender, Edad: $edad, Peso: $peso kg, Altura: $altura cm, Objetivo: $_goal. Frecuencia: $_frequency rutinas. Lesiones: $lesionFinal.
 
-      Eres un entrenador personal de élite. Crea una rutina de gimnasio dividida por días.
-
-      Responde ÚNICAMENTE con un ARRAY (lista) en formato JSON estricto, donde cada elemento del array sea una rutina independiente para un día de entrenamiento.
-
-      NO escribas texto fuera del JSON. NO uses markdown de código.
-
-     
-
-      Datos del usuario:
-
-      - Género: $_gender, Edad: $edad, Peso: $peso kg, Altura: $altura cm, Objetivo: $_goal.
-
-      - Frecuencia: $_frequency días/semana. Lesiones: $lesionFinal.
-
-
-
-      Estructura obligatoria del JSON (devuelve un ARRAY de objetos como este):
-
+      Formato OBLIGATORIO:
       [
-
         {
-
-          "nombre": "DÍA 1: Pecho y Tríceps (IA)",
-
-          "descripcion": "Rutina adaptada a tus datos",
-
+          "nombre": "DÍA 1: Pecho (IA)",
+          "descripcion": "Rutina generada",
           "planificacion": [
-
             {
-
-              "dia": "Ejercicios de la sesión",
-
-              "musculo": "Pecho y Tríceps",
-
+              "dia": "Ejercicios",
+              "musculo": "Pecho",
               "ejercicios": [
-
-                {"nombre": "Press de Banca", "series": 4, "repeticiones": "10"}
-
+                {"nombre": "Press", "series": 4, "repeticiones": "10"}
               ]
-
             }
-
           ]
-
-        },
-
-        {
-
-          "nombre": "DÍA 2: Espalda y Bíceps (IA)",
-
-          "descripcion": "Rutina adaptada a tus datos",
-
-          "planificacion": [
-
-            {
-
-              "dia": "Ejercicios de la sesión",
-
-              "musculo": "Espalda y Bíceps",
-
-              "ejercicios": [
-
-                {"nombre": "Dominadas", "series": 4, "repeticiones": "8"}
-
-              ]
-
-            }
-
-          ]
-
         }
-
       ]
-
-     
-
-      Genera exactamente tantas rutinas independientes en el array como indique la Frecuencia ($_frequency días/semana).
-
       ''';
 
-      // --- SISTEMA DE REINTENTOS PARA EVITAR EL ERROR 503 DE GOOGLE ---
-
       int maxReintentos = 3;
-
       int intentoActual = 0;
-
       String rawJson = '';
-
       bool exito = false;
+      List<dynamic> rutinasGeneradas = [];
 
       while (intentoActual < maxReintentos && !exito) {
         try {
           final response = await model.generateContent([Content.text(prompt)]);
-
           rawJson = response.text ?? '';
 
-          exito = true; // Si llega aquí, no hubo error 503
+          // Limpieza estricta de Markdown
+          rawJson =
+              rawJson.replaceAll('```json', '').replaceAll('```', '').trim();
+
+          if (rawJson.isEmpty) throw Exception("Respuesta vacía");
+
+          // Intentamos decodificar. Si falla, el catch lo captura y reintenta.
+          rutinasGeneradas = jsonDecode(rawJson);
+
+          if (rutinasGeneradas.isEmpty) throw Exception("Array vacío");
+
+          exito = true; // Decodificación exitosa
         } catch (e) {
           intentoActual++;
+          print("Intento $intentoActual fallido. Error: $e");
 
-          if (e.toString().contains('503') && intentoActual < maxReintentos) {
-            print(
-                "Google está saturado (Error 503). Reintentando en 3 segundos... (Intento $intentoActual)");
-
-            await Future.delayed(const Duration(
-                seconds: 3)); // Espera 3 segundos y vuelve a probar
+          if (intentoActual < maxReintentos) {
+            await Future.delayed(const Duration(seconds: 3));
           } else {
-            rethrow; // Si es otro error distinto al 503, lo lanza normalmente
+            // Si ya no quedan intentos, lanzamos el error para salir del bucle
+            rethrow;
           }
         }
       }
 
-      // ----------------------------------------------------------------
-
-      rawJson = rawJson.replaceAll('```json', '').replaceAll('```', '').trim();
-
-      if (rawJson.isEmpty) throw Exception("La respuesta de la IA está vacía.");
-
-      List<dynamic> rutinasGeneradas = jsonDecode(rawJson);
-
+      // Si todo ha ido bien, guardamos en Firestore
       for (var rutina in rutinasGeneradas) {
         await FirebaseFirestore.instance
             .collection('usuarios')
@@ -258,31 +188,32 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
             .collection('rutinas')
             .add({
           'rutina_json': jsonEncode(rutina),
-
           'fecha_creacion': FieldValue.serverTimestamp(),
-
           'activa': true,
-
-          'es_ia': true, //
+          'es_ia': true,
         });
       }
 
-      await Future.delayed(const Duration(seconds: 1));
+      // Simulamos un pequeño delay extra para dar un feedback visual de que se ha terminado
+      setState(() => _isGenerating = false);
+      await Future.delayed(const Duration(milliseconds: 500));
 
-      if (mounted) Navigator.pop(context);
+      // OJO: Ya no hacemos Navigator.pop() aquí. Dejamos que el usuario pulse "Ir a mi Home"
+      // para que vea el tick verde de éxito. El botón llamará a _nextStep y le llevará al Home.
     } catch (e) {
       print("ERROR IA DETALLADO: $e");
 
       if (mounted) {
-        if (e.toString().contains('503')) {
+        if (e.toString().contains('503') ||
+            e.toString().contains('Service Unavailable')) {
           _mostrarAviso(
-              "Los servidores de IA están muy ocupados. Por favor, inténtalo de nuevo en unos minutos.");
+              "Los servidores de IA están saturados. Por favor, inténtalo de nuevo.");
         } else {
-          _mostrarAviso("Error conectando con la IA. Por favor, reintenta.");
+          _mostrarAviso(
+              "Error conectando con la IA. Asegúrate de tener conexión.");
         }
 
         setState(() => _isGenerating = false);
-
         _pageController.previousPage(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut);
@@ -302,15 +233,10 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
   @override
   void dispose() {
     _pageController.dispose();
-
     _ageController.dispose();
-
     _weightController.dispose();
-
     _heightController.dispose();
-
     _injuryDetailController.dispose();
-
     super.dispose();
   }
 
@@ -475,7 +401,6 @@ class _CreationFlowScreenState extends State<CreationFlowScreen> {
           _buildSelectionCard('No tengo ninguna lesión', _injury == 'none', () {
             setState(() {
               _injury = 'none';
-
               _injuryDetailController.clear();
             });
           })
